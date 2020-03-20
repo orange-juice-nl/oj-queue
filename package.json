@@ -1,14 +1,25 @@
 {
   "name": "oj-queue",
-  "version": "1.0.5",
+  "version": "1.0.1",
+  "homepage": "https://www.orange-juice.nl",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/orange-juice-nl/oj-queue.git"
+  },
+  "keywords": [
+    "storage",
+    "database",
+    "json",
+    "persistent",
+    "key/value"
+  ],
   "description": "Queue, Promise based",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
     "build": "tsc ./src/index.ts --lib esnext --declaration true --outDir ./dist --module commonjs --moduleResolution node --target es5",
-    "share": "npm upgrade && npm version patch && npm run build && npm publish --registry http://web01.oj.local:3000"
+    "share": "npm upgrade && npm version patch -force && npm run build && npm publish --registry https://registry.npmjs.org"
   },
-  "keywords": [],
   "author": "Marius Linders @ Orange Juice<marius.linders@orange-juice.nl>",
-  "license": "ISC"
+  "license": "MIT"
 }
