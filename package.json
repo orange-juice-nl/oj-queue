@@ -23,6 +23,6 @@
   "author": "Marius Linders @ Orange Juice<marius.linders@orange-juice.nl>",
   "license": "MIT",
   "peerDependencies": {
-    "oj-eventaggregator": "^3.0.1"
+    "oj-eventaggregator": "^3.0.0"
   }
 }
