@@ -1,6 +1,6 @@
 {
   "name": "oj-queue",
-  "version": "2.0.2",
+  "version": "2.0.3",
   "homepage": "https://www.orange-juice.nl",
   "repository": {
     "type": "git",
@@ -17,7 +17,7 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
-    "build": "tsc ./src/index.ts --lib esnext --declaration true --outDir ./dist --module commonjs --moduleResolution node --target es5",
+    "build": "tsc ./src/index.ts --lib esnext,dom --declaration true --outDir ./dist --module commonjs --moduleResolution node --target es5",
     "share": "npm upgrade && npm version patch -force && npm run build && npm publish --registry https://registry.npmjs.org"
   },
   "author": "Marius Linders @ Orange Juice<marius.linders@orange-juice.nl>",
