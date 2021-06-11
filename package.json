@@ -1,6 +1,6 @@
 {
   "name": "oj-queue",
-  "version": "3.0.2",
+  "version": "3.0.3",
   "homepage": "https://www.orange-juice.nl",
   "repository": {
     "type": "git",
@@ -23,6 +23,6 @@
   "author": "Marius Linders @ Orange Juice<marius.linders@orange-juice.nl>",
   "license": "MIT",
   "peerDependencies": {
-    "oj-eventaggregator": "^3.0.0"
+    "oj-eventaggregator": "^3.0.1"
   }
 }
