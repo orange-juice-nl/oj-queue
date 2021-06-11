@@ -1,77 +1,161 @@
 "use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.createQueue = function (concurrent) {
-    if (concurrent === void 0) { concurrent = 2; }
-    var queue = {};
-    var order = [];
-    var id = 0;
-    var paused = false;
-    var add = function (id, fn) {
-        if (!queue[id]) {
-            order.push(id);
-            var resolver_1;
-            var rejector_1;
-            var promise = new Promise(function (res, rej) {
-                resolver_1 = res;
-                rejector_1 = rej;
-            });
-            queue[id] = {
-                promise: promise,
-                resolver: resolver_1,
-                rejector: rejector_1,
-                fn: fn,
-                busy: null,
-            };
-            if (allowNext())
-                run(order.shift());
+var __assign = (this && this.__assign) || function () {
+    __assign = Object.assign || function(t) {
+        for (var s, i = 1, n = arguments.length; i < n; i++) {
+            s = arguments[i];
+            for (var p in s) if (Object.prototype.hasOwnProperty.call(s, p))
+                t[p] = s[p];
         }
-        return queue[id].promise;
+        return t;
     };
-    var cancel = function (id) {
-        var i = order.indexOf(id);
-        if (id !== -1)
-            order.splice(i);
+    return __assign.apply(this, arguments);
+};
+var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
+    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
+    return new (P || (P = Promise))(function (resolve, reject) {
+        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
+        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
+        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
+        step((generator = generator.apply(thisArg, _arguments || [])).next());
+    });
+};
+var __generator = (this && this.__generator) || function (thisArg, body) {
+    var _ = { label: 0, sent: function() { if (t[0] & 1) throw t[1]; return t[1]; }, trys: [], ops: [] }, f, y, t, g;
+    return g = { next: verb(0), "throw": verb(1), "return": verb(2) }, typeof Symbol === "function" && (g[Symbol.iterator] = function() { return this; }), g;
+    function verb(n) { return function (v) { return step([n, v]); }; }
+    function step(op) {
+        if (f) throw new TypeError("Generator is already executing.");
+        while (_) try {
+            if (f = 1, y && (t = op[0] & 2 ? y["return"] : op[0] ? y["throw"] || ((t = y["return"]) && t.call(y), 0) : y.next) && !(t = t.call(y, op[1])).done) return t;
+            if (y = 0, t) op = [op[0] & 2, t.value];
+            switch (op[0]) {
+                case 0: case 1: t = op; break;
+                case 4: _.label++; return { value: op[1], done: false };
+                case 5: _.label++; y = op[1]; op = [0]; continue;
+                case 7: op = _.ops.pop(); _.trys.pop(); continue;
+                default:
+                    if (!(t = _.trys, t = t.length > 0 && t[t.length - 1]) && (op[0] === 6 || op[0] === 2)) { _ = 0; continue; }
+                    if (op[0] === 3 && (!t || (op[1] > t[0] && op[1] < t[3]))) { _.label = op[1]; break; }
+                    if (op[0] === 6 && _.label < t[1]) { _.label = t[1]; t = op; break; }
+                    if (t && _.label < t[2]) { _.label = t[2]; _.ops.push(op); break; }
+                    if (t[2]) _.ops.pop();
+                    _.trys.pop(); continue;
+            }
+            op = body.call(thisArg, _);
+        } catch (e) { op = [6, e]; y = 0; } finally { f = t = 0; }
+        if (op[0] & 5) throw op[1]; return { value: op[0] ? op[1] : void 0, done: true };
+    }
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.Queue = exports.QueueItem = exports.Status = void 0;
+var Status;
+(function (Status) {
+    Status[Status["PENDING"] = 0] = "PENDING";
+    Status[Status["BUSY"] = 1] = "BUSY";
+    Status[Status["REMOVED"] = 2] = "REMOVED";
+})(Status = exports.Status || (exports.Status = {}));
+var QueueItem = /** @class */ (function () {
+    function QueueItem(id, data, queue) {
+        var _this = this;
+        this.id = id;
+        this.data = data;
+        this.status = Status.PENDING;
+        this.queue = queue;
+        var resolver;
+        var rejector;
+        this.promise = new Promise(function (resolve, reject) {
+            resolver = resolve;
+            rejector = reject;
+        });
+        this.exec = function () {
+            _this.status = Status.BUSY;
+            Promise.resolve()
+                .then(function () {
+                _this.queue.resolver(_this.data, resolver, rejector);
+                return _this.promise;
+            })
+                .catch(function (err) {
+                var _a;
+                if (!_this.queue.options.retries) {
+                    console.error("queue item failed, " + err.message);
+                    return;
+                }
+                if ("__retry" in data && data["__retry"] >= _this.queue.options.retries) {
+                    console.error("queue item failed " + data["__retry"] + " times, " + err.message);
+                    return;
+                }
+                console.error("queue item failed, " + err.message);
+                var retry = (_a = data["__retry"]) !== null && _a !== void 0 ? _a : 0;
+                _this.queue.add(id + "_", __assign(__assign({}, data), { __retry: retry + 1 }), (retry + 1) * 5000)
+                    .catch(function () { });
+            })
+                .finally(function () {
+                _this.queue.remove(_this);
+                setTimeout(function () { return _this.queue.next(); }, 1000);
+            });
+        };
+    }
+    return QueueItem;
+}());
+exports.QueueItem = QueueItem;
+var Queue = /** @class */ (function () {
+    function Queue(resolver, options) {
+        if (options === void 0) { options = {}; }
+        this.queue = [];
+        this.__id = 0;
+        this.options = options;
+        this.resolver = resolver;
+    }
+    Queue.prototype.find = function (id) {
+        return this.queue.find(function (x) { return x.id === id; });
     };
-    var nextId = function () {
-        return id++;
+    Queue.prototype.nextId = function () {
+        return this.__id++;
     };
-    var pause = function () {
-        return paused = true;
-    };
-    var resume = function () {
-        paused = false;
-        while (allowNext() && order[0])
-            run(order.shift());
-    };
-    var run = function (id) {
-        if (!queue[id])
-            throw new Error("No queued task with id \"" + id + "\"");
-        queue[id].busy = true;
-        queue[id].fn(function (val, err) {
-            if (err)
-                queue[id].rejector(err);
-            else
-                queue[id].resolver(val);
-            queue[id].busy = false;
-            while (allowNext() && order[0])
-                run(order.shift());
-            delete queue[id];
+    Queue.prototype.add = function (id, data, delay) {
+        if (delay === void 0) { delay = 0; }
+        return __awaiter(this, void 0, void 0, function () {
+            var qi, item;
+            var _this = this;
+            return __generator(this, function (_a) {
+                qi = this.find(id);
+                if (qi)
+                    return [2 /*return*/, qi.promise];
+                item = new QueueItem(id, data, this);
+                if (!delay) {
+                    this.queue.push(item);
+                    this.next();
+                }
+                else
+                    setTimeout(function () {
+                        _this.queue.push(item);
+                        _this.next();
+                    }, delay);
+                return [2 /*return*/, item.promise];
+            });
         });
     };
-    var allowNext = function () {
-        return !paused
-            && getRunning().length < concurrent;
+    Queue.prototype.allowNext = function () {
+        var _a;
+        var running = this.queue.filter(function (x) { return x.status === Status.BUSY; });
+        return running.length < ((_a = this.options.concurrent) !== null && _a !== void 0 ? _a : 1);
     };
-    var getRunning = function () {
-        return Object.keys(queue)
-            .map(function (x) { return queue[x]; })
-            .filter(function (x) { return x.busy === true; });
+    Queue.prototype.remove = function (item) {
+        var i = this.queue.indexOf(item);
+        if (i !== -1)
+            this.queue.splice(i, 1);
     };
-    return {
-        add: add,
-        nextId: nextId,
-        pause: pause,
-        resume: resume,
-        cancel: cancel
+    Queue.prototype.next = function (all) {
+        if (all === void 0) { all = false; }
+        if (!this.allowNext())
+            return;
+        var qi = this.queue.find(function (x) { return x.status === Status.PENDING; });
+        if (!qi)
+            return;
+        qi.exec();
+        if (all)
+            this.next(all);
     };
-};
+    return Queue;
+}());
+exports.Queue = Queue;

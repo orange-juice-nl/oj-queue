@@ -1,108 +1,131 @@
-type PromiseFn<T> = (done: (value: T | null, error?: any) => void) => void | Promise<void>
+export type QueueFn<T, R> = (data: T, res: (data: R) => void, rej: (error: Error) => void) => void
 
-interface IQueue {
-  [id: string]: {
-    promise: Promise<any>,
-    resolver: (value?: any) => void,
-    rejector: (reason?: any) => void,
-    fn: PromiseFn<any>,
-    busy: boolean,
-  }
+export enum Status {
+    PENDING,
+    BUSY,
+    REMOVED
 }
 
-export interface IQueueInstance {
-  add<T>(id: string | number, fn: PromiseFn<T>): Promise<T>,
-  nextId: () => number,
-  pause: () => void,
-  resume: () => void,
-  cancel: (id: string | number) => void
+export class QueueItem<T extends Object, R> {
+    id: string | number
+    data: T
+    status: Status
+    promise: Promise<R>
+    exec: () => void
+    queue: Queue<T, R>
+
+    constructor(id: string | number, data: T, queue: Queue<T, R>) {
+        this.id = id
+        this.data = data
+        this.status = Status.PENDING
+        this.queue = queue
+
+        let resolver: (data: R) => void
+        let rejector: (reason?: Error) => void
+        this.promise = new Promise<R>((resolve, reject) => {
+            resolver = resolve
+            rejector = reject
+        })
+
+        this.exec = () => {
+            this.status = Status.BUSY
+
+            Promise.resolve()
+                .then(() => {
+                    this.queue.resolver(this.data, resolver, rejector)
+                    return this.promise
+                })
+                .catch(err => {
+                    if (!this.queue.options.retries) {
+                        console.error(`queue item failed, ${err.message}`)
+                        return
+                    }
+
+                    if ("__retry" in data && data["__retry"] >= this.queue.options.retries) {
+                        console.error(`queue item failed ${data["__retry"]} times, ${err.message}`)
+                        return
+                    }
+
+                    console.error(`queue item failed, ${err.message}`)
+
+                    const retry = data["__retry"] ?? 0
+
+                    this.queue.add(`${id}_`, { ...data, __retry: retry + 1 }, (retry + 1) * 5000)
+                        .catch(() => { })
+                })
+                .finally(() => {
+                    this.queue.remove(this)
+                    setTimeout(() => this.queue.next(), 1000)
+                })
+        }
+    }
 }
 
-export const createQueue = (concurrent: number = 2): IQueueInstance => {
-  const queue: IQueue = {}
-  const order: (string | number)[] = []
-  let id = 0
-  let paused = false
+export interface IQueueOptions {
+    concurrent?: number,
+    retries?: number,
+}
 
-  const add = <T>(id: string | number, fn: PromiseFn<T>): Promise<T> => {
-    if (!queue[id]) {
-      order.push(id)
+export class Queue<T extends Object, R> {
+    private queue: QueueItem<T, R>[] = []
+    private __id = 0
+    resolver: QueueFn<T, R>
+    options: IQueueOptions
 
-      let resolver
-      let rejector
-      const promise = new Promise<T>((res, rej) => {
-        resolver = res
-        rejector = rej
-      })
-
-      queue[id] = {
-        promise,
-        resolver,
-        rejector,
-        fn,
-        busy: null,
-      }
-
-      if (allowNext())
-        run(order.shift())
+    constructor(resolver: QueueFn<T, R>, options: IQueueOptions = {}) {
+        this.options = options
+        this.resolver = resolver
     }
 
-    return queue[id].promise as Promise<T>
-  }
+    find(id: string | number) {
+        return this.queue.find(x => x.id === id)
+    }
 
-  const cancel = (id: string | number) => {
-    const i = order.indexOf(id)
-    if (id !== -1)
-      order.splice(i)
-  }
+    nextId() {
+        return this.__id++
+    }
 
-  const nextId = () =>
-    id++
+    async add(id: string | number, data: T, delay = 0): Promise<R> {
+        const qi = this.find(id)
+        if (qi)
+            return qi.promise
 
-  const pause = () =>
-    paused = true
+        const item = new QueueItem(id, data, this)
+        if (!delay) {
+            this.queue.push(item)
+            this.next()
+        }
+        else
+            setTimeout(() => {
+                this.queue.push(item)
+                this.next()
+            }, delay)
 
-  const resume = () => {
-    paused = false
-    while (allowNext() && order[0])
-      run(order.shift())
-  }
+        return item.promise
+    }
 
-  const run = (id: string | number) => {
-    if (!queue[id])
-      throw new Error(`No queued task with id "${id}"`)
+    allowNext() {
+        const running = this.queue.filter(x => x.status === Status.BUSY)
+        return running.length < (this.options.concurrent ?? 1)
+    }
 
-    queue[id].busy = true
+    remove(item: QueueItem<T, R>) {
+        const i = this.queue.indexOf(item)
+        if (i !== -1)
+            this.queue.splice(i, 1)
+    }
 
-    queue[id].fn((val, err) => {
-      if (err)
-        queue[id].rejector(err)
-      else
-        queue[id].resolver(val)
+    next(all = false) {
+        if (!this.allowNext())
+            return
 
-      queue[id].busy = false
+        const qi = this.queue.find(x => x.status === Status.PENDING)
+        if (!qi)
+            return
 
-      while (allowNext() && order[0])
-        run(order.shift())
+        qi.exec()
 
-      delete queue[id]
-    })
-  }
-
-  const allowNext = () =>
-    !paused
-    && getRunning().length < concurrent
-
-  const getRunning = () =>
-    Object.keys(queue)
-      .map(x => queue[x])
-      .filter(x => x.busy === true)
-
-  return {
-    add,
-    nextId,
-    pause,
-    resume,
-    cancel
-  }
+        if (all)
+            this.next(all)
+    }
 }
