@@ -1,3 +1,5 @@
+import { EventAggregator } from "oj-eventaggregator"
+
 export type QueueFn<T, R> = (data: T, res: (data: R) => void, rej: (error: Error) => void) => void
 
 export enum Status {
@@ -6,7 +8,10 @@ export enum Status {
     REMOVED
 }
 
-export class QueueItem<T extends Object, R> {
+export class QueueItem<T extends Object, R> extends EventAggregator<{
+    "error": any
+    "retry": any
+}> {
     id: string | number
     data: T
     status: Status
@@ -15,6 +20,7 @@ export class QueueItem<T extends Object, R> {
     queue: Queue<T, R>
 
     constructor(id: string | number, data: T, queue: Queue<T, R>) {
+        super()
         this.id = id
         this.data = data
         this.status = Status.PENDING
@@ -37,16 +43,16 @@ export class QueueItem<T extends Object, R> {
                 })
                 .catch(err => {
                     if (!this.queue.options.retries) {
-                        console.error(`queue item failed, ${err.message}`)
+                        this.emit("error", err)
                         return
                     }
 
                     if ("__retry" in data && data["__retry"] >= this.queue.options.retries) {
-                        console.error(`queue item failed ${data["__retry"]} times, ${err.message}`)
+                        this.emit("error", err)
                         return
                     }
 
-                    console.error(`queue item failed, ${err.message}`)
+                    this.emit("retry", err)
 
                     const retry = data["__retry"] ?? 0
 

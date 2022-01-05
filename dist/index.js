@@ -1,4 +1,19 @@
 "use strict";
+var __extends = (this && this.__extends) || (function () {
+    var extendStatics = function (d, b) {
+        extendStatics = Object.setPrototypeOf ||
+            ({ __proto__: [] } instanceof Array && function (d, b) { d.__proto__ = b; }) ||
+            function (d, b) { for (var p in b) if (Object.prototype.hasOwnProperty.call(b, p)) d[p] = b[p]; };
+        return extendStatics(d, b);
+    };
+    return function (d, b) {
+        if (typeof b !== "function" && b !== null)
+            throw new TypeError("Class extends value " + String(b) + " is not a constructor or null");
+        extendStatics(d, b);
+        function __() { this.constructor = d; }
+        d.prototype = b === null ? Object.create(b) : (__.prototype = b.prototype, new __());
+    };
+})();
 var __assign = (this && this.__assign) || function () {
     __assign = Object.assign || function(t) {
         for (var s, i = 1, n = arguments.length; i < n; i++) {
@@ -48,26 +63,28 @@ var __generator = (this && this.__generator) || function (thisArg, body) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.Queue = exports.QueueItem = exports.Status = void 0;
+var oj_eventaggregator_1 = require("oj-eventaggregator");
 var Status;
 (function (Status) {
     Status[Status["PENDING"] = 0] = "PENDING";
     Status[Status["BUSY"] = 1] = "BUSY";
     Status[Status["REMOVED"] = 2] = "REMOVED";
 })(Status = exports.Status || (exports.Status = {}));
-var QueueItem = /** @class */ (function () {
+var QueueItem = /** @class */ (function (_super) {
+    __extends(QueueItem, _super);
     function QueueItem(id, data, queue) {
-        var _this = this;
-        this.id = id;
-        this.data = data;
-        this.status = Status.PENDING;
-        this.queue = queue;
+        var _this = _super.call(this) || this;
+        _this.id = id;
+        _this.data = data;
+        _this.status = Status.PENDING;
+        _this.queue = queue;
         var resolver;
         var rejector;
-        this.promise = new Promise(function (resolve, reject) {
+        _this.promise = new Promise(function (resolve, reject) {
             resolver = resolve;
             rejector = reject;
         });
-        this.exec = function () {
+        _this.exec = function () {
             _this.status = Status.BUSY;
             Promise.resolve()
                 .then(function () {
@@ -77,14 +94,14 @@ var QueueItem = /** @class */ (function () {
                 .catch(function (err) {
                 var _a;
                 if (!_this.queue.options.retries) {
-                    console.error("queue item failed, " + err.message);
+                    _this.emit("error", err);
                     return;
                 }
                 if ("__retry" in data && data["__retry"] >= _this.queue.options.retries) {
-                    console.error("queue item failed " + data["__retry"] + " times, " + err.message);
+                    _this.emit("error", err);
                     return;
                 }
-                console.error("queue item failed, " + err.message);
+                _this.emit("retry", err);
                 var retry = (_a = data["__retry"]) !== null && _a !== void 0 ? _a : 0;
                 _this.queue.add(id + "_", __assign(__assign({}, data), { __retry: retry + 1 }), (retry + 1) * 5000)
                     .catch(function () { });
@@ -94,9 +111,10 @@ var QueueItem = /** @class */ (function () {
                 setTimeout(function () { return _this.queue.next(); }, 1000);
             });
         };
+        return _this;
     }
     return QueueItem;
-}());
+}(oj_eventaggregator_1.EventAggregator));
 exports.QueueItem = QueueItem;
 var Queue = /** @class */ (function () {
     function Queue(resolver, options) {

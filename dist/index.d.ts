@@ -1,10 +1,14 @@
+import { EventAggregator } from "oj-eventaggregator";
 export declare type QueueFn<T, R> = (data: T, res: (data: R) => void, rej: (error: Error) => void) => void;
 export declare enum Status {
     PENDING = 0,
     BUSY = 1,
     REMOVED = 2
 }
-export declare class QueueItem<T extends Object, R> {
+export declare class QueueItem<T extends Object, R> extends EventAggregator<{
+    "error": any;
+    "retry": any;
+}> {
     id: string | number;
     data: T;
     status: Status;
