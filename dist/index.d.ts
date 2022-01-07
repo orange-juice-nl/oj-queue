@@ -1,36 +1,33 @@
 import { EventAggregator } from "oj-eventaggregator";
-export declare type QueueFn<T, R> = (data: T, res: (data: R) => void, rej: (error: Error) => void) => void;
-export declare enum Status {
-    PENDING = 0,
-    BUSY = 1,
-    REMOVED = 2
+export declare type QueueFn<T, R> = (data: T, resolve: (value: R | PromiseLike<R>) => void, reject: (reason?: any) => void) => void;
+export declare type QueueStatus = "PENDING" | "BUSY" | "DONE";
+export declare class QueueItem<T = any, R = any> {
+    private readonly delegate;
+    private readonly handler;
+    private readonly data;
+    private _status;
+    private _error?;
+    constructor(handler: QueueFn<T, R>, data: T);
+    private listen;
+    get promise(): Promise<R>;
+    get status(): QueueStatus;
+    get error(): Error;
+    execute(): Promise<R>;
+    cancel(err: Error): Promise<R>;
 }
-export declare class QueueItem<T extends Object, R> extends EventAggregator<{
-    "error": any;
-    "retry": any;
+export declare class Queue extends EventAggregator<{
+    "add": QueueItem;
+    "remove": QueueItem;
+    "busy": QueueItem;
+    "done": QueueItem;
+    "error": QueueItem;
 }> {
-    id: string | number;
-    data: T;
-    status: Status;
-    promise: Promise<R>;
-    exec: () => void;
-    queue: Queue<T, R>;
-    constructor(id: string | number, data: T, queue: Queue<T, R>);
-}
-export interface IQueueOptions {
-    concurrent?: number;
-    retries?: number;
-}
-export declare class Queue<T extends Object, R> {
-    private queue;
-    private __id;
-    resolver: QueueFn<T, R>;
-    options: IQueueOptions;
-    constructor(resolver: QueueFn<T, R>, options?: IQueueOptions);
-    find(id: string | number): any;
-    nextId(): number;
-    add(id: string | number, data: T, delay?: number): Promise<R>;
-    allowNext(): boolean;
-    remove(item: QueueItem<T, R>): void;
-    next(all?: boolean): void;
+    concurrent: number;
+    items: QueueItem[];
+    constructor(opts?: {
+        concurrent?: number;
+    });
+    add<T, R>(handler: QueueFn<T, R>, data: T): Promise<R>;
+    remove(item: QueueItem): void;
+    next(): void;
 }

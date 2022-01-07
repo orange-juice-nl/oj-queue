@@ -14,17 +14,6 @@ var __extends = (this && this.__extends) || (function () {
         d.prototype = b === null ? Object.create(b) : (__.prototype = b.prototype, new __());
     };
 })();
-var __assign = (this && this.__assign) || function () {
-    __assign = Object.assign || function(t) {
-        for (var s, i = 1, n = arguments.length; i < n; i++) {
-            s = arguments[i];
-            for (var p in s) if (Object.prototype.hasOwnProperty.call(s, p))
-                t[p] = s[p];
-        }
-        return t;
-    };
-    return __assign.apply(this, arguments);
-};
 var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
     function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
     return new (P || (P = Promise))(function (resolve, reject) {
@@ -62,118 +51,122 @@ var __generator = (this && this.__generator) || function (thisArg, body) {
     }
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.Queue = exports.QueueItem = exports.Status = void 0;
+exports.Queue = exports.QueueItem = void 0;
 var oj_eventaggregator_1 = require("oj-eventaggregator");
-var Status;
-(function (Status) {
-    Status[Status["PENDING"] = 0] = "PENDING";
-    Status[Status["BUSY"] = 1] = "BUSY";
-    Status[Status["REMOVED"] = 2] = "REMOVED";
-})(Status = exports.Status || (exports.Status = {}));
-var QueueItem = /** @class */ (function (_super) {
-    __extends(QueueItem, _super);
-    function QueueItem(id, data, queue) {
-        var _this = _super.call(this) || this;
-        _this.id = id;
-        _this.data = data;
-        _this.status = Status.PENDING;
-        _this.queue = queue;
-        var resolver;
-        var rejector;
-        _this.promise = new Promise(function (resolve, reject) {
-            resolver = resolve;
-            rejector = reject;
-        });
-        _this.exec = function () {
-            _this.status = Status.BUSY;
-            Promise.resolve()
-                .then(function () {
-                _this.queue.resolver(_this.data, resolver, rejector);
-                return _this.promise;
-            })
-                .catch(function (err) {
-                var _a;
-                if (!_this.queue.options.retries) {
-                    _this.emit("error", err);
-                    return;
+var oj_promise_utils_1 = require("oj-promise-utils");
+var QueueItem = /** @class */ (function () {
+    function QueueItem(handler, data) {
+        this.handler = handler;
+        this.data = data;
+        this._status = "PENDING";
+        this.delegate = (0, oj_promise_utils_1.delegate)();
+        this.listen();
+    }
+    QueueItem.prototype.listen = function () {
+        return __awaiter(this, void 0, void 0, function () {
+            var err_1;
+            return __generator(this, function (_a) {
+                switch (_a.label) {
+                    case 0:
+                        _a.trys.push([0, 2, 3, 4]);
+                        return [4 /*yield*/, this.delegate.promise];
+                    case 1:
+                        _a.sent();
+                        return [3 /*break*/, 4];
+                    case 2:
+                        err_1 = _a.sent();
+                        this._error = err_1;
+                        return [3 /*break*/, 4];
+                    case 3:
+                        this._status = "DONE";
+                        return [7 /*endfinally*/];
+                    case 4: return [2 /*return*/];
                 }
-                if ("__retry" in data && data["__retry"] >= _this.queue.options.retries) {
-                    _this.emit("error", err);
-                    return;
-                }
-                _this.emit("retry", err);
-                var retry = (_a = data["__retry"]) !== null && _a !== void 0 ? _a : 0;
-                _this.queue.add(id + "_", __assign(__assign({}, data), { __retry: retry + 1 }), (retry + 1) * 5000)
-                    .catch(function () { });
-            })
-                .finally(function () {
-                _this.queue.remove(_this);
-                setTimeout(function () { return _this.queue.next(); }, 1000);
             });
-        };
+        });
+    };
+    Object.defineProperty(QueueItem.prototype, "promise", {
+        get: function () {
+            return this.delegate.promise;
+        },
+        enumerable: false,
+        configurable: true
+    });
+    Object.defineProperty(QueueItem.prototype, "status", {
+        get: function () {
+            return this._status;
+        },
+        enumerable: false,
+        configurable: true
+    });
+    Object.defineProperty(QueueItem.prototype, "error", {
+        get: function () {
+            return this._error;
+        },
+        enumerable: false,
+        configurable: true
+    });
+    QueueItem.prototype.execute = function () {
+        this._status = "BUSY";
+        this.handler(this.data, this.delegate.resolve, this.delegate.reject);
+        return this.promise;
+    };
+    QueueItem.prototype.cancel = function (err) {
+        this.delegate.reject(err);
+        return this.promise;
+    };
+    return QueueItem;
+}());
+exports.QueueItem = QueueItem;
+var Queue = /** @class */ (function (_super) {
+    __extends(Queue, _super);
+    function Queue(opts) {
+        var _a;
+        var _this = _super.call(this) || this;
+        _this.items = [];
+        _this.concurrent = (_a = opts === null || opts === void 0 ? void 0 : opts.concurrent) !== null && _a !== void 0 ? _a : 1;
         return _this;
     }
-    return QueueItem;
-}(oj_eventaggregator_1.EventAggregator));
-exports.QueueItem = QueueItem;
-var Queue = /** @class */ (function () {
-    function Queue(resolver, options) {
-        if (options === void 0) { options = {}; }
-        this.queue = [];
-        this.__id = 0;
-        this.options = options;
-        this.resolver = resolver;
-    }
-    Queue.prototype.find = function (id) {
-        return this.queue.find(function (x) { return x.id === id; });
-    };
-    Queue.prototype.nextId = function () {
-        return this.__id++;
-    };
-    Queue.prototype.add = function (id, data, delay) {
-        if (delay === void 0) { delay = 0; }
+    Queue.prototype.add = function (handler, data) {
         return __awaiter(this, void 0, void 0, function () {
-            var qi, item;
+            var item;
             var _this = this;
             return __generator(this, function (_a) {
-                qi = this.find(id);
-                if (qi)
-                    return [2 /*return*/, qi.promise];
-                item = new QueueItem(id, data, this);
-                if (!delay) {
-                    this.queue.push(item);
-                    this.next();
-                }
-                else
-                    setTimeout(function () {
-                        _this.queue.push(item);
-                        _this.next();
-                    }, delay);
+                item = new QueueItem(handler, data);
+                this.items.push(item);
+                this.emit("add", item);
+                this.next();
+                item.promise
+                    .then(function () { return _this.emit("done", item); })
+                    .catch(function () { return _this.emit("error", item); })
+                    .finally(function () {
+                    _this.remove(item);
+                    _this.next();
+                });
                 return [2 /*return*/, item.promise];
             });
         });
     };
-    Queue.prototype.allowNext = function () {
-        var _a;
-        var running = this.queue.filter(function (x) { return x.status === Status.BUSY; });
-        return running.length < ((_a = this.options.concurrent) !== null && _a !== void 0 ? _a : 1);
-    };
     Queue.prototype.remove = function (item) {
-        var i = this.queue.indexOf(item);
-        if (i !== -1)
-            this.queue.splice(i, 1);
+        var index = this.items.indexOf(item);
+        if (index !== -1)
+            this.items.splice(index, 1);
+        item.cancel(new Error("removed from queue"));
+        this.emit("remove", item);
     };
-    Queue.prototype.next = function (all) {
-        if (all === void 0) { all = false; }
-        if (!this.allowNext())
+    Queue.prototype.next = function () {
+        var busy = this.items.filter(function (x) { return x.status === "BUSY"; });
+        var slots = this.concurrent - busy.length;
+        if (slots < 1)
             return;
-        var qi = this.queue.find(function (x) { return x.status === Status.PENDING; });
-        if (!qi)
-            return;
-        qi.exec();
-        if (all)
-            this.next(all);
+        for (var i = 0; i < slots; i++) {
+            var item = this.items.find((function (x) { return x.status === "PENDING"; }));
+            if (!item)
+                return;
+            item.execute();
+            this.emit("busy", item);
+        }
     };
     return Queue;
-}());
+}(oj_eventaggregator_1.EventAggregator));
 exports.Queue = Queue;
