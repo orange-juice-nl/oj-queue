@@ -1,21 +1,23 @@
 import { EventAggregator } from "oj-eventaggregator"
-import { delegate, pause } from "oj-promise-utils"
+import { delegate } from "oj-promise-utils"
 
-export type QueueFn<T, R> = (data: T, resolve: (value: R | PromiseLike<R>) => void, reject: (reason?: any) => void) => void
+export type QueueFn<Result, Data> = (data: Data, resolve: (value: Result | PromiseLike<Result>) => void, reject: (reason?: any) => void) => void
 export type QueueStatus = "PENDING" | "BUSY" | "DONE"
 
-export class QueueItem<T = any, R = any>{
-    private readonly delegate: { promise: Promise<R>; resolve: (value: R | PromiseLike<R>) => void; reject: (reason?: any) => void }
-    private readonly handler: QueueFn<T, R>
-    private readonly data: T
+export class QueueItem<Result, Data>{
+    private readonly delegate: { promise: Promise<Result>; resolve: (value: Result | PromiseLike<Result>) => void; reject: (reason?: any) => void }
+    private readonly handler: QueueFn<Result, Data>
     private _status: QueueStatus
     private _error?: Error
+    readonly data: Data
+    readonly priority: number
 
-    constructor(handler: QueueFn<T, R>, data: T) {
+    constructor(handler: QueueFn<Result, Data>, data: Data, priority = 0) {
         this.handler = handler
         this.data = data
         this._status = "PENDING"
-        this.delegate = delegate<R>()
+        this.delegate = delegate<Result>()
+        this.priority = priority
         this.listen()
     }
 
@@ -49,66 +51,106 @@ export class QueueItem<T = any, R = any>{
         return this.promise
     }
 
-    cancel(err: Error) {
+    resolve(value: Result) {
+        this.delegate.resolve(value)
+        return this.promise
+    }
+
+    reject(err: Error) {
         this.delegate.reject(err)
         return this.promise
     }
 }
 
 export class Queue extends EventAggregator<{
-    "add": QueueItem
-    "remove": QueueItem
-    "busy": QueueItem
-    "done": QueueItem
-    "error": QueueItem
+    "add": QueueItem<any, any>
+    "remove": QueueItem<any, any>
+    "busy": QueueItem<any, any>
+    "done": QueueItem<any, any>
+    "error": QueueItem<any, any>
 }> {
-    concurrent: number
-    items: QueueItem[] = []
+    readonly options: { concurrent: number, delay: number }
+    readonly items: QueueItem<any, any>[] = []
+    private addTimer: any
 
-    constructor(opts?: { concurrent?: number }) {
+    constructor(opts: Partial<Queue["options"]> = {}) {
         super()
-        this.concurrent = opts?.concurrent ?? 1
+        this.options = Object.assign({ concurrent: 1, delay: 0 }, opts)
     }
 
-    async add<T, R>(handler: QueueFn<T, R>, data: T) {
-        const item = new QueueItem<T, R>(handler, data)
-        this.items.push(item)
-        this.emit("add", item)
-        this.next()
+    add(...items: QueueItem<any, any>[]) {
+        for (const item of items) {
+            item.promise
+                .then(() => this.emit("done", item))
+                .catch(() => this.emit("error", item))
+                .finally(() => this.finish(item))
 
-        item.promise
-            .then(() => this.emit("done", item))
-            .catch(() => this.emit("error", item))
-            .finally(() => {
-                this.remove(item)
-                this.next()
-            })
+            this.items.push(item)
 
-        return item.promise
+            this.emit("add", item)
+        }
+
+        globalThis.clearTimeout(this.addTimer)
+        this.addTimer = globalThis.setTimeout(() => {
+            this.sort()
+            this.next()
+        }, this.options.delay)
+
+        return this
     }
 
-    remove(item: QueueItem) {
-        const index = this.items.indexOf(item)
-        if (index !== -1)
-            this.items.splice(index, 1)
-
-        item.cancel(new Error("removed from queue"))
-        this.emit("remove", item)
+    sort() {
+        this.items.sort((a, b) => a.priority - b.priority)
+        return this
     }
 
     next() {
         const busy = this.items.filter(x => x.status === "BUSY")
-        const slots = this.concurrent - busy.length
+        const slots = this.options.concurrent - busy.length
         if (slots < 1)
-            return
+            return this
 
         for (let i = 0; i < slots; i++) {
             const item = this.items.find((x => x.status === "PENDING"))
             if (!item)
-                return
+                return this
 
             item.execute()
             this.emit("busy", item)
+        }
+
+        return this
+    }
+
+    finish(item: QueueItem<any, any>) {
+        this.remove(item)
+        this.next()
+        return this
+    }
+
+    remove(item: QueueItem<any, any>, reject = true) {
+        const index = this.items.indexOf(item)
+        if (index !== -1)
+            this.items.splice(index, 1)
+
+        if (reject)
+            item.reject(new Error("removed from queue"))
+
+        this.emit("remove", item)
+
+        return this
+    }
+}
+
+export const queue = () => {
+    const q = new Queue()
+
+    return {
+        q,
+        add: <T>(fn: () => Promise<T>) => {
+            const qi = new QueueItem<T, undefined>((_, res, rej) => fn().then(res).catch(rej), undefined)
+            q.add(qi)
+            return qi.promise
         }
     }
 }

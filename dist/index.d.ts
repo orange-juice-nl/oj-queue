@@ -1,33 +1,43 @@
 import { EventAggregator } from "oj-eventaggregator";
-export declare type QueueFn<T, R> = (data: T, resolve: (value: R | PromiseLike<R>) => void, reject: (reason?: any) => void) => void;
+export declare type QueueFn<Result, Data> = (data: Data, resolve: (value: Result | PromiseLike<Result>) => void, reject: (reason?: any) => void) => void;
 export declare type QueueStatus = "PENDING" | "BUSY" | "DONE";
-export declare class QueueItem<T = any, R = any> {
+export declare class QueueItem<Result, Data> {
     private readonly delegate;
     private readonly handler;
-    private readonly data;
     private _status;
     private _error?;
-    constructor(handler: QueueFn<T, R>, data: T);
+    readonly data: Data;
+    readonly priority: number;
+    constructor(handler: QueueFn<Result, Data>, data: Data, priority?: number);
     private listen;
-    get promise(): Promise<R>;
+    get promise(): Promise<Result>;
     get status(): QueueStatus;
     get error(): Error;
-    execute(): Promise<R>;
-    cancel(err: Error): Promise<R>;
+    execute(): Promise<Result>;
+    resolve(value: Result): Promise<Result>;
+    reject(err: Error): Promise<Result>;
 }
 export declare class Queue extends EventAggregator<{
-    "add": QueueItem;
-    "remove": QueueItem;
-    "busy": QueueItem;
-    "done": QueueItem;
-    "error": QueueItem;
+    "add": QueueItem<any, any>;
+    "remove": QueueItem<any, any>;
+    "busy": QueueItem<any, any>;
+    "done": QueueItem<any, any>;
+    "error": QueueItem<any, any>;
 }> {
-    concurrent: number;
-    items: QueueItem[];
-    constructor(opts?: {
-        concurrent?: number;
-    });
-    add<T, R>(handler: QueueFn<T, R>, data: T): Promise<R>;
-    remove(item: QueueItem): void;
-    next(): void;
+    readonly options: {
+        concurrent: number;
+        delay: number;
+    };
+    readonly items: QueueItem<any, any>[];
+    private addTimer;
+    constructor(opts?: Partial<Queue["options"]>);
+    add(...items: QueueItem<any, any>[]): this;
+    sort(): this;
+    next(): this;
+    finish(item: QueueItem<any, any>): this;
+    remove(item: QueueItem<any, any>, reject?: boolean): this;
 }
+export declare const queue: () => {
+    q: Queue;
+    add: <T>(fn: () => Promise<T>) => Promise<T>;
+};
