@@ -1,6 +1,6 @@
 {
   "name": "oj-queue",
-  "version": "6.1.5",
+  "version": "6.1.6",
   "homepage": "https://www.orange-juice.nl",
   "repository": {
     "type": "git",
@@ -23,6 +23,6 @@
   "license": "MIT",
   "peerDependencies": {
     "oj-eventaggregator": "^6.0.0",
-    "oj-promise-utils": "^6.2.0"
+    "oj-promise-utils": "^6.2.2"
   }
 }
