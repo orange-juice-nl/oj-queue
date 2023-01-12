@@ -1,17 +1,16 @@
 {
   "name": "oj-queue",
-  "version": "6.0.0",
+  "version": "6.1.5",
   "homepage": "https://www.orange-juice.nl",
   "repository": {
     "type": "git",
     "url": "https://github.com/orange-juice-nl/oj-queue.git"
   },
   "keywords": [
-    "storage",
-    "database",
-    "json",
-    "persistent",
-    "key/value"
+    "queue",
+    "priority",
+    "async",
+    "promise"
   ],
   "description": "Queue, Promise based",
   "main": "dist/index.js",
@@ -24,6 +23,6 @@
   "license": "MIT",
   "peerDependencies": {
     "oj-eventaggregator": "^6.0.0",
-    "oj-promise-utils": "^6.0.3"
+    "oj-promise-utils": "^6.2.0"
   }
 }
