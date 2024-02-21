@@ -1,6 +1,6 @@
 import { EventAggregator } from "oj-eventaggregator";
-export declare type QueueFn<Result, Data> = (data: Data, resolve: (value: Result | PromiseLike<Result>) => void, reject: (reason?: any) => void) => void;
-export declare type QueueStatus = "PENDING" | "BUSY" | "DONE";
+export type QueueFn<Result, Data> = (data: Data, resolve: (value: Result | PromiseLike<Result>) => void, reject: (reason?: any) => void) => void;
+export type QueueStatus = "PENDING" | "BUSY" | "DONE";
 export declare class QueueItem<Result, Data> {
     private readonly delegate;
     private readonly handler;
